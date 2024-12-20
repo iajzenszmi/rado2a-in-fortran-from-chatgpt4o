@@ -1,0 +1,104 @@
+userland@localhost:~$ nano rado2a3.f90
+userland@localhost:~$ gfortran rado2a3.f90
+userland@localhost:~$ ./a.out
+ Final solution at t =   10.000000000000000      is y =   3.6907492147646757E-005
+userland@localhost:~$ cat rado2a3.f90
+program adaptive_radau_iia
+  implicit none
+  integer, parameter :: dp = selected_real_kind(15, 307)  ! Double precision
+  integer, parameter :: max_order = 13
+  real(dp) :: t0, tf, y0, tol, h, y_final
+  real(dp), allocatable :: tableau(:,:)
+
+  ! Initial parameters
+  t0 = 0.0_dp              ! Initial time
+  tf = 10.0_dp             ! Final time
+  y0 = 1.0_dp              ! Initial condition
+  tol = 1.0e-8_dp          ! Tolerance for error control
+  h = 0.1_dp               ! Initial step size
+
+  ! Allocate tableau for the Radau IIA method
+  allocate(tableau(max_order+1, max_order+1))
+
+  ! Generate Radau IIA coefficients
+  call generate_radau_tableau(max_order, tableau)
+
+  ! Solve the ODE
+  call radau_adaptive_ode_solver(t0, tf, y0, tol, h, tableau, max_order, y_final)
+
+  ! Output the result
+  print *, "Final solution at t =", tf, "is y =", y_final
+
+contains
+
+  subroutine generate_radau_tableau(order, tableau)
+    ! Generate Radau IIA tableau coefficients for the given order
+    integer, intent(in) :: order
+    real(dp), intent(out) :: tableau(order+1, order+1)
+    integer :: i, j
+
+    ! Example coefficients for Radau IIA (replace with actual coefficients for production)
+    do i = 1, order+1
+       do j = 1, order+1
+          tableau(i, j) = 1.0_dp / real(i + j, dp)
+       end do
+    end do
+  end subroutine generate_radau_tableau
+
+  subroutine radau_adaptive_ode_solver(t0, tf, y0, tol, h, tableau, max_order, y_final)
+    ! Adaptive Radau IIA solver for stiff ODEs
+    real(dp), intent(in) :: t0, tf, y0, tol
+    real(dp), intent(out) :: y_final
+    real(dp), intent(inout) :: h
+    real(dp), intent(in) :: tableau(:,:)
+    integer, intent(in) :: max_order
+    real(dp) :: t, y, error_estimate
+    integer :: order
+
+    t = t0
+    y = y0
+    order = 5  ! Start with 5th order Radau IIA
+
+    do while (t < tf)
+       if (t + h > tf) h = tf - t  ! Ensure we don't overshoot final time
+
+       ! Perform a single step
+       call radau_step(t, y, h, tableau, order, error_estimate)
+
+       ! Adjust the step size and order based on the error
+       if (error_estimate > tol) then
+          h = 0.5_dp * h
+          order = max(5, order-2)  ! Reduce order if necessary
+       else
+          t = t + h
+          if (error_estimate < tol / 10.0_dp) then
+             h = 2.0_dp * h
+             order = min(max_order, order+2)
+          end if
+       end if
+    end do
+
+    y_final = y
+  end subroutine radau_adaptive_ode_solver
+
+  subroutine radau_step(t, y, h, tableau, order, error_estimate)
+    ! Perform a single step of the Radau IIA method
+    real(dp), intent(in) :: t, h
+    real(dp), intent(inout) :: y  ! Allow modification of y
+    real(dp), intent(out) :: error_estimate
+    real(dp), intent(in) :: tableau(:,:)
+    integer, intent(in) :: order
+    real(dp) :: y_new, y_diff
+
+    ! Example: solve y' = -y (stiff problem)
+    y_new = y + h * (-y)  ! Replace with full Radau IIA implementation
+    y_diff = y_new - y    ! Simple error estimate (placeholder)
+    error_estimate = abs(y_diff)
+
+    y = y_new  ! Update y
+  end subroutine radau_step
+
+end program adaptive_radau_iia
+
+
+userland@localhost:~$
