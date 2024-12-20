@@ -1,0 +1,136 @@
+userland@localhost:~$ gfortran radoIIa2.f90
+userland@localhost:~$ ./a.out
+
+ Final solution at t =   10.000000000000000      is y =   4.5399214426447230E-005
+userland@localhost:~$
+userland@localhost:~$ cat radoIIa2.f90
+   program radau_iia_solver
+  implicit none
+  integer, parameter :: dp = selected_real_kind(15, 307)  ! Double precision
+  integer, parameter :: s = 3  ! Radau IIA order (3 stages, 5th order)
+  real(dp), parameter :: gamma = 0.4358665215_dp  ! Radau IIA constant
+  real(dp) :: t0, tf, y0, tol, h, y_final
+  real(dp), allocatable :: A(:,:), b(:), c(:)
+
+  ! Problem setup
+  t0 = 0.0_dp              ! Initial time
+  tf = 10.0_dp             ! Final time
+  y0 = 1.0_dp              ! Initial condition
+  tol = 1.0e-8_dp          ! Error tolerance
+  h = 0.1_dp               ! Initial time step
+
+  ! Allocate and initialize Radau IIA tableau
+  allocate(A(s, s), b(s), c(s))
+  call initialize_radau_iia(A, b, c)
+
+  ! Solve the ODE
+  call radau_adaptive_solver(t0, tf, y0, tol, h, A, b, c, y_final)
+
+  ! Output the result
+  print *, "Final solution at t =", tf, "is y =", y_final
+
+contains
+
+  subroutine initialize_radau_iia(A, b, c)
+    ! Initializes the Radau IIA Butcher tableau for 3 stages (5th order)
+    real(dp), intent(out) :: A(s, s), b(s), c(s)
+    A(1, :) = (/ 0.1968154772_dp, -0.0655354258_dp,  0.0237709743_dp /)
+    A(2, :) = (/ 0.3944243147_dp,  0.2920734117_dp, -0.0415487521_dp /)
+    A(3, :) = (/ 0.3764030627_dp,  0.5124858262_dp,  0.1111111111_dp /)
+    b(:)    = (/ 0.3764030627_dp,  0.5124858262_dp,  0.1111111111_dp /)
+    c(:)    = (/ 0.1550510257_dp,  0.6449489743_dp,  1.0_dp /)
+  end subroutine initialize_radau_iia
+
+  subroutine radau_adaptive_solver(t0, tf, y0, tol, h, A, b, c, y_final)
+    ! Adaptive Radau IIA solver for stiff ODEs
+    real(dp), intent(in) :: t0, tf, y0, tol
+    real(dp), intent(inout) :: h
+    real(dp), intent(in) :: A(s, s), b(s), c(s)
+    real(dp), intent(out) :: y_final
+    real(dp) :: t, y, error_estimate
+    logical :: reject_step
+
+    t = t0
+    y = y0
+
+    do while (t < tf)
+       if (t + h > tf) h = tf - t  ! Adjust step size for final step
+
+       reject_step = .true.
+       do while (reject_step)
+          ! Perform Radau IIA step
+          call radau_step(t, y, h, A, b, c, y_final, error_estimate)
+
+          ! Check error and adjust step size
+          if (error_estimate > tol) then
+             h = 0.5_dp * h  ! Decrease step size
+          else
+             reject_step = .false.
+             t = t + h
+             y = y_final
+             if (error_estimate < tol / 10.0_dp) h = 2.0_dp * h  ! Increase step size
+          end if
+       end do
+    end do
+  end subroutine radau_adaptive_solver
+
+  subroutine radau_step(t, y, h, A, b, c, y_final, error_estimate)
+    ! Performs a single Radau IIA step
+    real(dp), intent(in) :: t, y, h
+    real(dp), intent(in) :: A(s, s), b(s), c(s)
+    real(dp), intent(out) :: y_final, error_estimate
+    real(dp) :: k(s), F(s), residual, delta_y
+    real(dp) :: y_temp, t_temp, sum_temp
+    integer :: i, j, iter, max_iter
+    real(dp) :: tol_newton, error_norm
+
+    max_iter = 10
+    tol_newton = 1.0e-8_dp
+    k = 0.0_dp
+
+    ! Initial guess for k (Runge-Kutta explicit stage)
+    do i = 1, s
+       t_temp = t + c(i) * h
+       sum_temp = 0.0_dp
+       do j = 1, s
+          sum_temp = sum_temp + A(i, j) * k(j)
+       end do
+       y_temp = y + h * sum_temp
+       k(i) = -y_temp  ! Replace with actual F(t, y) if solving more complex ODEs
+    end do
+
+    ! Newton iteration to solve implicit equations
+    do iter = 1, max_iter
+       residual = 0.0_dp
+       do i = 1, s
+          t_temp = t + c(i) * h
+          sum_temp = 0.0_dp
+          do j = 1, s
+             sum_temp = sum_temp + A(i, j) * k(j)
+          end do
+          y_temp = y + h * sum_temp
+          F(i) = y_temp + k(i)  ! F = G(k)
+          residual = residual + abs(F(i))
+       end do
+
+       ! Convergence check
+       if (residual < tol_newton) exit
+
+       ! Solve linear system J*delta_k = -F to update k (simplified Jacobian-free here)
+       delta_y = -F(1) / (1.0_dp + h * gamma)
+       k(1) = k(1) + delta_y  ! Update only one stage (for demonstration)
+    end do
+
+    ! Compute solution update
+    sum_temp = 0.0_dp
+    do i = 1, s
+       sum_temp = sum_temp + b(i) * k(i)
+    end do
+    y_final = y + h * sum_temp
+
+    ! Error estimate (embedded method or heuristic)
+    error_estimate = abs(h * (b(3) - b(2)) * k(3))  ! Simple heuristic
+  end subroutine radau_step
+
+end program radau_iia_solver
+userland@localhost:~$
